@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Percolation Grid</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        margin: 20px;
+        font-family: sans-serif;
+        text-align: center;
+      }
+
+      #controls {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      #pSlider {
+        width: 500px;
+        height: 40px;
+      }
+
+      #gridSize {
+        width: 80px;
+        font-size: 16px;
+        padding: 4px;
+        text-align: center;
+      }
+
+      button {
+        padding: 8px 16px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+
+      canvas {
+        border: 1px solid #ccc;
+        image-rendering: pixelated;
+        margin-bottom: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Percolation Visualization</h2>
+
+    <canvas id="gridCanvas" width="500" height="500"></canvas>
+
+    <div id="controls">
+      <div>
+        <label>p = <span id="pValue">0.70</span></label>
+        <br />
+        <input
+          type="range"
+          id="pSlider"
+          min="0"
+          max="1"
+          step="0.01"
+          value="0.7"
+        />
+      </div>
+
+      <div>
+        Grid size:
+        <input type="number" id="gridSize" value="50" min="10" max="200" />
+      </div>
+
+      <button id="regen">재생성</button>
+    </div>
+
+    <script>
+      let N = parseInt(document.getElementById("gridSize").value);
+      let cellSize = 10;
+      let grid = [];
+      let colors = [];
+
+      const canvas = document.getElementById("gridCanvas");
+      const ctx = canvas.getContext("2d");
+
+      const pSlider = document.getElementById("pSlider");
+      const pValue = document.getElementById("pValue");
+      const gridInput = document.getElementById("gridSize");
+      const regenBtn = document.getElementById("regen");
+
+      // 엣지 weight
+      let hEdges = [];
+      let vEdges = [];
+
+      function generateGrid() {
+        hEdges = [];
+        vEdges = [];
+        colors = [];
+        N = parseInt(gridInput.value);
+        cellSize = canvas.width / N;
+
+        for (let i = 0; i < N; i++) {
+          hEdges[i] = [];
+          vEdges[i] = [];
+          for (let j = 0; j < N; j++) {
+            hEdges[i][j] = Math.random();
+            vEdges[i][j] = i < N - 1 ? Math.random() : null;
+            // 색상 미리 생성 (눈 아프지 않게)
+            const hue = Math.random() * 60 + 180;
+            const sat = 50 + Math.random() * 30;
+            const light = 40 + Math.random() * 20;
+            colors.push(`hsl(${hue}, ${sat}%, ${light}%)`);
+          }
+        }
+      }
+
+      // Union-Find
+      function find(parent, x) {
+        if (parent[x] !== x) parent[x] = find(parent, parent[x]);
+        return parent[x];
+      }
+      function union(parent, a, b) {
+        a = find(parent, a);
+        b = find(parent, b);
+        if (a !== b) parent[b] = a;
+      }
+
+      // draw 함수
+      function draw(p) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const parent = Array.from({ length: N * N }, (_, i) => i);
+
+        function id(i, j) {
+          return i * N + j;
+        }
+
+        for (let i = 0; i < N; i++) {
+          for (let j = 0; j < N; j++) {
+            if (j < N - 1 && hEdges[i][j] < p)
+              union(parent, id(i, j), id(i, j + 1));
+            if (i < N - 1 && vEdges[i][j] < p)
+              union(parent, id(i, j), id(i + 1, j));
+          }
+        }
+
+        for (let i = 0; i < N; i++) {
+          for (let j = 0; j < N; j++) {
+            const root = find(parent, id(i, j));
+            ctx.fillStyle = colors[root];
+            ctx.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
+          }
+        }
+      }
+
+      // 이벤트
+      pSlider.oninput = function () {
+        const p = parseFloat(pSlider.value);
+        pValue.textContent = p.toFixed(2);
+        draw(p);
+      };
+
+      function reset() {
+        generateGrid();
+        draw(parseFloat(pSlider.value));
+      }
+
+      regenBtn.onclick = reset;
+      gridInput.onchange = reset;
+
+      reset();
+    </script>
+  </body>
+</html>
