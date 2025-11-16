@@ -2,61 +2,51 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <title>Percolation Grid</title>
+    <title>Percolation Grid Fast</title>
     <style>
       body {
+        margin: 0;
+        font-family: sans-serif;
         display: flex;
-        flex-direction: column;
         justify-content: center;
         align-items: center;
-        margin: 20px;
-        font-family: sans-serif;
+        flex-direction: column;
         text-align: center;
       }
-
+      canvas {
+        border: 1px solid #ccc;
+        image-rendering: pixelated;
+        display: block;
+        margin: 20px auto;
+      }
       #controls {
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        gap: 15px;
+        gap: 10px;
         margin-bottom: 20px;
       }
-
       #pSlider {
         width: 500px;
-        height: 40px;
+        height: 30px;
       }
-
       #gridSize {
         width: 80px;
-        font-size: 16px;
-        padding: 4px;
         text-align: center;
       }
-
       button {
-        padding: 8px 16px;
-        font-size: 16px;
+        padding: 6px 12px;
         cursor: pointer;
-      }
-
-      canvas {
-        border: 1px solid #ccc;
-        image-rendering: pixelated;
-        margin-bottom: 20px;
       }
     </style>
   </head>
   <body>
     <h2>Percolation Visualization</h2>
-
-    <canvas id="gridCanvas" width="500" height="500"></canvas>
-
+    <canvas id="gridCanvas"></canvas>
     <div id="controls">
       <div>
-        <label>p = <span id="pValue">0.70</span></label>
-        <br />
+        p = <span id="pValue">0.70</span><br />
         <input
           type="range"
           id="pSlider"
@@ -66,53 +56,66 @@
           value="0.7"
         />
       </div>
-
       <div>
         Grid size:
-        <input type="number" id="gridSize" value="50" min="10" max="200" />
+        <input type="number" id="gridSize" value="500" min="10" max="800" />
       </div>
-
       <button id="regen">재생성</button>
     </div>
 
     <script>
-      let N = parseInt(document.getElementById("gridSize").value);
-      let cellSize = 10;
-      let grid = [];
-      let colors = [];
-
       const canvas = document.getElementById("gridCanvas");
       const ctx = canvas.getContext("2d");
-
       const pSlider = document.getElementById("pSlider");
       const pValue = document.getElementById("pValue");
       const gridInput = document.getElementById("gridSize");
       const regenBtn = document.getElementById("regen");
 
-      // 엣지 weight
-      let hEdges = [];
-      let vEdges = [];
-
-      function generateGrid() {
-        hEdges = [];
-        vEdges = [];
+      let N = parseInt(gridInput.value);
+      let hEdges = [],
+        vEdges = [],
         colors = [];
-        N = parseInt(gridInput.value);
-        cellSize = canvas.width / N;
 
-        for (let i = 0; i < N; i++) {
-          hEdges[i] = [];
-          vEdges[i] = [];
-          for (let j = 0; j < N; j++) {
-            hEdges[i][j] = Math.random();
-            vEdges[i][j] = i < N - 1 ? Math.random() : null;
-            // 색상 미리 생성 (눈 아프지 않게)
-            const hue = Math.random() * 60 + 180;
-            const sat = 50 + Math.random() * 30;
-            const light = 40 + Math.random() * 20;
-            colors.push(`hsl(${hue}, ${sat}%, ${light}%)`);
-          }
+      // HSL -> RGB 변환
+      function hsl2rgb(h, s, l) {
+        s /= 100;
+        l /= 100;
+        let c = (1 - Math.abs(2 * l - 1)) * s;
+        let x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        let m = l - c / 2;
+        let r = 0,
+          g = 0,
+          b = 0;
+        if (h < 60) {
+          r = c;
+          g = x;
+          b = 0;
+        } else if (h < 120) {
+          r = x;
+          g = c;
+          b = 0;
+        } else if (h < 180) {
+          r = 0;
+          g = c;
+          b = x;
+        } else if (h < 240) {
+          r = 0;
+          g = x;
+          b = c;
+        } else if (h < 300) {
+          r = x;
+          g = 0;
+          b = c;
+        } else {
+          r = c;
+          g = 0;
+          b = c;
         }
+        return [
+          Math.floor((r + m) * 255),
+          Math.floor((g + m) * 255),
+          Math.floor((b + m) * 255),
+        ];
       }
 
       // Union-Find
@@ -120,17 +123,39 @@
         if (parent[x] !== x) parent[x] = find(parent, parent[x]);
         return parent[x];
       }
-      function union(parent, a, b) {
+      function union(parent, rank, a, b) {
         a = find(parent, a);
         b = find(parent, b);
-        if (a !== b) parent[b] = a;
+        if (a === b) return;
+        if (rank[a] < rank[b]) [a, b] = [b, a];
+        parent[b] = a;
+        if (rank[a] === rank[b]) rank[a]++;
       }
 
-      // draw 함수
-      function draw(p) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const parent = Array.from({ length: N * N }, (_, i) => i);
+      // 그리드 생성
+      function generateGrid() {
+        N = parseInt(gridInput.value);
+        hEdges = [];
+        vEdges = [];
+        colors = [];
+        for (let i = 0; i < N; i++) {
+          hEdges[i] = [];
+          vEdges[i] = [];
+          for (let j = 0; j < N; j++) {
+            hEdges[i][j] = Math.random();
+            vEdges[i][j] = i < N - 1 ? Math.random() : null;
+            const hue = Math.random() * 360;
+            const sat = 50 + Math.random() * 30;
+            const light = 40 + Math.random() * 20;
+            colors.push([hue, sat, light]);
+          }
+        }
+      }
 
+      // 그리기
+      function draw(p) {
+        const parent = Array.from({ length: N * N }, (_, i) => i);
+        let rank = Array(N * N).fill(0);
         function id(i, j) {
           return i * N + j;
         }
@@ -138,19 +163,29 @@
         for (let i = 0; i < N; i++) {
           for (let j = 0; j < N; j++) {
             if (j < N - 1 && hEdges[i][j] < p)
-              union(parent, id(i, j), id(i, j + 1));
+              union(parent, rank, id(i, j), id(i, j + 1));
             if (i < N - 1 && vEdges[i][j] < p)
-              union(parent, id(i, j), id(i + 1, j));
+              union(parent, rank, id(i, j), id(i + 1, j));
           }
         }
 
+        const img = ctx.createImageData(N, N);
         for (let i = 0; i < N; i++) {
           for (let j = 0; j < N; j++) {
             const root = find(parent, id(i, j));
-            ctx.fillStyle = colors[root];
-            ctx.fillRect(j * cellSize, i * cellSize, cellSize, cellSize);
+            const [h, s, l] = colors[root];
+            const [r, g, b] = hsl2rgb(h, s, l);
+            const idx = (i * N + j) * 4;
+            img.data[idx] = r;
+            img.data[idx + 1] = g;
+            img.data[idx + 2] = b;
+            img.data[idx + 3] = 255;
           }
         }
+
+        canvas.width = N;
+        canvas.height = N;
+        ctx.putImageData(img, 0, 0);
       }
 
       // 이벤트
@@ -159,16 +194,18 @@
         pValue.textContent = p.toFixed(2);
         draw(p);
       };
-
-      function reset() {
+      regenBtn.onclick = () => {
         generateGrid();
         draw(parseFloat(pSlider.value));
-      }
+      };
+      gridInput.onchange = () => {
+        generateGrid();
+        draw(parseFloat(pSlider.value));
+      };
 
-      regenBtn.onclick = reset;
-      gridInput.onchange = reset;
-
-      reset();
+      // 초기화
+      generateGrid();
+      draw(parseFloat(pSlider.value));
     </script>
   </body>
 </html>
