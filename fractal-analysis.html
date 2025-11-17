@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Percolation Analysis (Fixed Symbols)</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 0;
+        padding: 20px;
+        background-color: #f4f4f4;
+      }
+      h2 {
+        margin-bottom: 10px;
+      }
+
+      .main-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        align-items: center;
+      }
+      .top-row {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+      }
+
+      .canvas-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      canvas {
+        background: white;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        image-rendering: pixelated;
+      }
+      #gridCanvas {
+        border: 1px solid #333;
+        margin-bottom: 10px;
+      }
+      #fractalCanvas {
+        border: 1px solid #ccc;
+      }
+      #trendCanvas {
+        border: 1px solid #ccc;
+        margin-top: 10px;
+      }
+
+      #controls {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+        padding: 20px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        min-width: 300px;
+      }
+      .control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      button {
+        padding: 10px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+
+      button#trendBtn {
+        background-color: #6f42c1;
+      }
+      button#trendBtn:hover {
+        background-color: #59359a;
+      }
+
+      .info {
+        font-size: 0.9em;
+        color: #555;
+        margin-top: 10px;
+        line-height: 1.4;
+      }
+      .result {
+        font-weight: bold;
+        color: #d63384;
+        font-size: 1.1em;
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #eee;
+      }
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.9em;
+        font-weight: normal;
+        color: #333;
+        margin-top: 5px;
+        border-bottom: 1px dotted #ddd;
+        padding-bottom: 2px;
+      }
+      .stat-row:last-child {
+        border-bottom: none;
+      }
+
+      /* 수학 기호 스타일 */
+      .math {
+        font-family: "Times New Roman", serif;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Percolation Analysis with Stats</h2>
+
+    <div class="main-layout">
+      <div class="top-row">
+        <div class="canvas-wrapper">
+          <canvas id="gridCanvas"></canvas>
+          <div><strong>Log-Log Plot (Box Counting)</strong></div>
+          <canvas id="fractalCanvas" width="500" height="250"></canvas>
+        </div>
+
+        <div id="controls">
+          <div class="control-group">
+            <label
+              >Probability <span class="math">p</span>:
+              <span id="pValue">0.50</span></label
+            >
+            <input
+              type="range"
+              id="pSlider"
+              min="0"
+              max="1"
+              step="0.01"
+              value="0.5"
+            />
+          </div>
+
+          <div class="control-group">
+            <label
+              >Grid Rows:
+              <input
+                type="number"
+                id="gridSize"
+                value="200"
+                style="width: 60px"
+              />
+            </label>
+            <span style="font-size: 0.8em; color: #666">(Cols = Rows * 2)</span>
+          </div>
+
+          <button id="regen">Grid 재생성 (Reset)</button>
+
+          <hr style="width: 100%; border: 0; border-top: 1px solid #eee" />
+
+          <button id="trendBtn">📊 D vs p 그래프 생성</button>
+
+          <div class="info">
+            <div class="result" id="resultBox">
+              <div>차원 <span class="math">D</span>: -</div>
+            </div>
+            <p>
+              <strong>상관계수(<span class="math">r</span>)</strong>: -1에
+              가까울수록 점들이 완벽한 직선을 이룹니다.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="canvas-wrapper">
+        <div>
+          <strong
+            >Fractal Dimension (<span class="math">D</span>) vs Probability
+            (<span class="math">p</span>)</strong
+          >
+        </div>
+        <canvas id="trendCanvas" width="800" height="300"></canvas>
+      </div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("gridCanvas");
+      const ctx = canvas.getContext("2d");
+      const fCanvas = document.getElementById("fractalCanvas");
+      const fCtx = fCanvas.getContext("2d");
+      const tCanvas = document.getElementById("trendCanvas");
+      const tCtx = tCanvas.getContext("2d");
+
+      const pSlider = document.getElementById("pSlider");
+      const pValue = document.getElementById("pValue");
+      const gridInput = document.getElementById("gridSize");
+      const regenBtn = document.getElementById("regen");
+      const trendBtn = document.getElementById("trendBtn");
+      const resultBox = document.getElementById("resultBox");
+
+      let ROW = parseInt(gridInput.value);
+      let COL = ROW * 2;
+      let hEdges = [],
+        vEdges = [];
+      let largestClusterPoints = [];
+
+      function find(parent, x) {
+        if (parent[x] !== x) parent[x] = find(parent, parent[x]);
+        return parent[x];
+      }
+      function union(parent, rank, a, b) {
+        a = find(parent, a);
+        b = find(parent, b);
+        if (a === b) return;
+        if (rank[a] < rank[b]) [a, b] = [b, a];
+        parent[b] = a;
+        if (rank[a] === rank[b]) rank[a]++;
+      }
+
+      function generateGrid() {
+        ROW = parseInt(gridInput.value);
+        COL = ROW * 2;
+        hEdges = [];
+        vEdges = [];
+        for (let i = 0; i < ROW; i++) {
+          hEdges[i] = [];
+          vEdges[i] = [];
+          for (let j = 0; j < COL; j++) {
+            hEdges[i][j] = j < COL - 1 ? Math.random() : null;
+            vEdges[i][j] = i < ROW - 1 ? Math.random() : null;
+          }
+        }
+      }
+
+      function draw(p) {
+        const parent = Array.from({ length: ROW * COL }, (_, i) => i);
+        let rank = Array(ROW * COL).fill(0);
+        const id = (i, j) => i * COL + j;
+
+        for (let i = 0; i < ROW; i++) {
+          for (let j = 0; j < COL; j++) {
+            if (j < COL - 1 && hEdges[i][j] < p)
+              union(parent, rank, id(i, j), id(i, j + 1));
+            if (i < ROW - 1 && vEdges[i][j] < p)
+              union(parent, rank, id(i, j), id(i + 1, j));
+          }
+        }
+
+        const sizeMap = {};
+        for (let i = 0; i < ROW * COL; i++) {
+          const root = find(parent, i);
+          sizeMap[root] = (sizeMap[root] || 0) + 1;
+        }
+
+        let maxRoot = -1,
+          maxSize = -1;
+        for (const root in sizeMap) {
+          if (sizeMap[root] > maxSize) {
+            maxSize = sizeMap[root];
+            maxRoot = parseInt(root);
+          }
+        }
+
+        const img = ctx.createImageData(COL, ROW);
+        largestClusterPoints = [];
+
+        for (let i = 0; i < ROW; i++) {
+          for (let j = 0; j < COL; j++) {
+            const root = find(parent, id(i, j));
+            const idx = (i * COL + j) * 4;
+
+            if (root === maxRoot && maxSize > 20) {
+              img.data[idx] = 255;
+              img.data[idx + 1] = 50;
+              img.data[idx + 2] = 50;
+              img.data[idx + 3] = 255;
+              largestClusterPoints.push([j, i]);
+            } else {
+              const clusterSize = sizeMap[root];
+              const b = Math.min(230, 150 + clusterSize * 2);
+              img.data[idx] = b;
+              img.data[idx + 1] = b;
+              img.data[idx + 2] = b;
+              img.data[idx + 3] = 255;
+            }
+          }
+        }
+
+        canvas.width = COL;
+        canvas.height = ROW;
+        ctx.putImageData(img, 0, 0);
+        canvas.style.width = "600px";
+        canvas.style.height = "300px";
+
+        analyzeFractal();
+      }
+
+      function analyzeFractal() {
+        if (largestClusterPoints.length < 50) {
+          fCtx.clearRect(0, 0, fCanvas.width, fCanvas.height);
+          resultBox.innerHTML = "D: - (Too small)";
+          return null;
+        }
+
+        const points = largestClusterPoints;
+        const minDim = Math.min(ROW, COL);
+        let boxSizes = [];
+        for (let s = 1; s <= minDim / 4; s *= 1.5) boxSizes.push(s);
+
+        const dataPoints = [];
+        for (let s of boxSizes) {
+          const occupiedBoxes = new Set();
+          for (let [x, y] of points) {
+            occupiedBoxes.add(`${Math.floor(x / s)},${Math.floor(y / s)}`);
+          }
+          if (occupiedBoxes.size > 0) {
+            dataPoints.push({
+              logS: Math.log(s),
+              logN: Math.log(occupiedBoxes.size),
+            });
+          }
+        }
+
+        // [통계 분석]
+        let sumX = 0,
+          sumY = 0,
+          sumXY = 0,
+          sumXX = 0,
+          sumYY = 0;
+        const n = dataPoints.length;
+        for (let p of dataPoints) {
+          sumX += p.logS;
+          sumY += p.logN;
+          sumXY += p.logS * p.logN;
+          sumXX += p.logS * p.logS;
+          sumYY += p.logN * p.logN;
+        }
+
+        const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+        const intercept = (sumY - slope * sumX) / n;
+        const D = -slope;
+
+        // 잔차 분산 및 R^2 계산
+        let ssRes = 0;
+        let ssTot = 0;
+        const meanY = sumY / n;
+
+        for (let p of dataPoints) {
+          const predictedY = slope * p.logS + intercept;
+          const residual = p.logN - predictedY;
+          ssRes += residual * residual;
+          ssTot += (p.logN - meanY) * (p.logN - meanY);
+        }
+
+        const variance = ssRes / n;
+        const rSquared = 1 - ssRes / ssTot;
+
+        // 상관계수 r
+        const numerator = n * sumXY - sumX * sumY;
+        const denomX = n * sumXX - sumX * sumX;
+        const denomY = n * sumYY - sumY * sumY;
+        const r = numerator / Math.sqrt(denomX * denomY);
+
+        drawLogLogPlot(dataPoints, slope, intercept, D, variance, rSquared, r);
+        return D;
+      }
+
+      function drawLogLogPlot(
+        data,
+        slope,
+        intercept,
+        D,
+        variance,
+        rSquared,
+        r
+      ) {
+        fCtx.clearRect(0, 0, fCanvas.width, fCanvas.height);
+
+        const dStr = isNaN(D) ? "-" : D.toFixed(3);
+        const varStr = isNaN(variance) ? "-" : variance.toFixed(4);
+        const r2Str = isNaN(rSquared) ? "-" : rSquared.toFixed(4);
+        const rStr = isNaN(r) ? "-" : r.toFixed(4);
+
+        // HTML 태그로 수학 기호 처리
+        resultBox.innerHTML = `
+            <div>차원 <span class="math">D</span> ≈ ${dStr} </div>
+            <div class="stat-row"><span>분산(σ²):</span> <span>${varStr}</span></div>
+            <div class="stat-row"><span>결정계수(R²):</span> <span>${r2Str}</span></div>
+            <div class="stat-row"><span>상관계수(r):</span> <span>${rStr}</span></div>
+        `;
+
+        if (data.length < 2) return;
+
+        const padding = 30;
+        const w = fCanvas.width - padding * 2;
+        const h = fCanvas.height - padding * 2;
+
+        const minX = Math.min(...data.map((d) => d.logS)),
+          maxX = Math.max(...data.map((d) => d.logS));
+        const minY = Math.min(...data.map((d) => d.logN)),
+          maxY = Math.max(...data.map((d) => d.logN));
+
+        const mapX = (v) => padding + ((v - minX) / (maxX - minX || 1)) * w;
+        const mapY = (v) =>
+          fCanvas.height - padding - ((v - minY) / (maxY - minY || 1)) * h;
+
+        fCtx.strokeStyle = "#333";
+        fCtx.lineWidth = 1;
+        fCtx.beginPath();
+        fCtx.moveTo(padding, padding);
+        fCtx.lineTo(padding, fCanvas.height - padding);
+        fCtx.lineTo(fCanvas.width - padding, fCanvas.height - padding);
+        fCtx.stroke();
+
+        fCtx.fillStyle = "black";
+        fCtx.font = "10px sans-serif";
+        fCtx.fillText("log(s)", fCanvas.width / 2, fCanvas.height - 5);
+        fCtx.save();
+        fCtx.translate(10, fCanvas.height / 2);
+        fCtx.rotate(-Math.PI / 2);
+        fCtx.fillText("log(N)", 0, 0);
+        fCtx.restore();
+
+        const y1 = slope * minX + intercept;
+        const y2 = slope * maxX + intercept;
+
+        fCtx.beginPath();
+        fCtx.strokeStyle = "blue";
+        fCtx.lineWidth = 2;
+        fCtx.moveTo(mapX(minX), mapY(y1));
+        fCtx.lineTo(mapX(maxX), mapY(y2));
+        fCtx.stroke();
+
+        fCtx.fillStyle = "red";
+        for (let p of data) {
+          fCtx.beginPath();
+          fCtx.arc(mapX(p.logS), mapY(p.logN), 3, 0, Math.PI * 2);
+          fCtx.fill();
+        }
+      }
+
+      function calculateFractalDimensionOnly(p) {
+        const parent = Array.from({ length: ROW * COL }, (_, i) => i);
+        let rank = Array(ROW * COL).fill(0);
+        const id = (i, j) => i * COL + j;
+
+        for (let i = 0; i < ROW; i++) {
+          for (let j = 0; j < COL; j++) {
+            if (j < COL - 1 && hEdges[i][j] < p)
+              union(parent, rank, id(i, j), id(i, j + 1));
+            if (i < ROW - 1 && vEdges[i][j] < p)
+              union(parent, rank, id(i, j), id(i + 1, j));
+          }
+        }
+
+        const sizeMap = {};
+        for (let i = 0; i < ROW * COL; i++) {
+          const root = find(parent, i);
+          sizeMap[root] = (sizeMap[root] || 0) + 1;
+        }
+
+        let maxRoot = -1,
+          maxSize = -1;
+        for (const root in sizeMap) {
+          if (sizeMap[root] > maxSize) {
+            maxSize = sizeMap[root];
+            maxRoot = parseInt(root);
+          }
+        }
+
+        if (maxSize < 50) return 0;
+
+        const points = [];
+        for (let i = 0; i < ROW; i++) {
+          for (let j = 0; j < COL; j++) {
+            if (find(parent, id(i, j)) === maxRoot) {
+              points.push([j, i]);
+            }
+          }
+        }
+
+        const minDim = Math.min(ROW, COL);
+        let boxSizes = [];
+        for (let s = 1; s <= minDim / 4; s *= 2) boxSizes.push(s);
+
+        const dataPoints = [];
+        for (let s of boxSizes) {
+          const occupiedBoxes = new Set();
+          for (let [x, y] of points) {
+            occupiedBoxes.add(`${Math.floor(x / s)},${Math.floor(y / s)}`);
+          }
+          if (occupiedBoxes.size > 0) {
+            dataPoints.push({
+              logS: Math.log(s),
+              logN: Math.log(occupiedBoxes.size),
+            });
+          }
+        }
+
+        if (dataPoints.length < 2) return 0;
+
+        let sumX = 0,
+          sumY = 0,
+          sumXY = 0,
+          sumXX = 0;
+        const n = dataPoints.length;
+        for (let p of dataPoints) {
+          sumX += p.logS;
+          sumY += p.logN;
+          sumXY += p.logS * p.logN;
+          sumXX += p.logS * p.logS;
+        }
+        const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+        return -slope;
+      }
+
+      function generateTrendGraph() {
+        tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+        tCtx.fillStyle = "rgba(0,0,0,0.05)";
+        tCtx.fillRect(0, 0, tCanvas.width, tCanvas.height);
+
+        tCtx.fillStyle = "black";
+        tCtx.font = "20px sans-serif";
+        tCtx.fillText(
+          "Calculating...",
+          tCanvas.width / 2 - 50,
+          tCanvas.height / 2
+        );
+
+        setTimeout(() => {
+          const results = [];
+          const step = 0.01;
+          for (let p = 0.1; p <= 0.9; p += step) {
+            const D = calculateFractalDimensionOnly(p);
+            results.push({ p, D });
+          }
+          drawTrendChart(results);
+        }, 50);
+      }
+
+      function drawTrendChart(data) {
+        tCtx.clearRect(0, 0, tCanvas.width, tCanvas.height);
+        const pad = 40;
+        const W = tCanvas.width;
+        const H = tCanvas.height;
+
+        tCtx.strokeStyle = "#666";
+        tCtx.beginPath();
+        tCtx.moveTo(pad, pad);
+        tCtx.lineTo(pad, H - pad);
+        tCtx.lineTo(W - pad, H - pad);
+        tCtx.stroke();
+
+        tCtx.fillStyle = "black";
+        tCtx.font = "12px sans-serif";
+        tCtx.fillText("Probability p (0.1 ~ 0.9)", W / 2 - 50, H - 10);
+        tCtx.save();
+        tCtx.translate(15, H / 2);
+        tCtx.rotate(-Math.PI / 2);
+        tCtx.fillText("Fractal Dimension D", 0, 0);
+        tCtx.restore();
+
+        const mapX = (val) => pad + ((val - 0.1) / 0.8) * (W - 2 * pad);
+        const mapY = (val) => H - pad - ((val - 0) / 2.2) * (H - 2 * pad);
+
+        tCtx.strokeStyle = "#ddd";
+        tCtx.setLineDash([5, 5]);
+        tCtx.beginPath();
+        tCtx.moveTo(mapX(0.5), pad);
+        tCtx.lineTo(mapX(0.5), H - pad);
+        tCtx.stroke();
+        tCtx.beginPath();
+        tCtx.moveTo(pad, mapY(2));
+        tCtx.lineTo(W - pad, mapY(2));
+        tCtx.stroke();
+        tCtx.setLineDash([]);
+
+        tCtx.fillStyle = "#999";
+        tCtx.fillText("p=0.5", mapX(0.5) + 5, H - pad - 5);
+        tCtx.fillText("D=2", pad + 5, mapY(2) - 5);
+
+        tCtx.beginPath();
+        tCtx.strokeStyle = "#6f42c1";
+        tCtx.lineWidth = 2;
+        let started = false;
+        for (let point of data) {
+          if (point.D <= 0.1) continue;
+          const x = mapX(point.p);
+          const y = mapY(point.D);
+          if (!started) {
+            tCtx.moveTo(x, y);
+            started = true;
+          } else {
+            tCtx.lineTo(x, y);
+          }
+        }
+        tCtx.stroke();
+
+        tCtx.fillStyle = "#6f42c1";
+        for (let point of data) {
+          if (point.D <= 0.1) continue;
+          tCtx.beginPath();
+          tCtx.arc(mapX(point.p), mapY(point.D), 2, 0, Math.PI * 2);
+          tCtx.fill();
+        }
+      }
+
+      pSlider.oninput = () => {
+        const p = parseFloat(pSlider.value);
+        pValue.innerText = p.toFixed(2);
+        draw(p);
+      };
+      regenBtn.onclick = () => {
+        generateGrid();
+        draw(parseFloat(pSlider.value));
+      };
+      gridInput.onchange = () => {
+        generateGrid();
+        draw(parseFloat(pSlider.value));
+      };
+      trendBtn.onclick = generateTrendGraph;
+
+      generateGrid();
+      draw(0.5);
+    </script>
+  </body>
+</html>

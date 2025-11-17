@@ -2,63 +2,59 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <title>Percolation Grid Fast</title>
+
+    <title>Percolation Visualization</title>
+
     <style>
       body {
-        margin: 0;
         font-family: sans-serif;
         display: flex;
-        justify-content: center;
-        align-items: center;
         flex-direction: column;
-        text-align: center;
+        align-items: center;
+        margin: 0;
+        padding: 20px;
       }
       canvas {
         border: 1px solid #ccc;
         image-rendering: pixelated;
-        display: block;
-        margin: 20px auto;
+        margin-bottom: 20px;
       }
       #controls {
         display: flex;
         flex-direction: column;
-        justify-content: center;
         align-items: center;
         gap: 10px;
-        margin-bottom: 20px;
       }
       #pSlider {
         width: 500px;
-        height: 30px;
       }
       #gridSize {
-        width: 80px;
+        width: 60px;
         text-align: center;
-      }
-      button {
-        padding: 6px 12px;
-        cursor: pointer;
       }
     </style>
   </head>
+
   <body>
     <h2>Percolation Visualization</h2>
     <canvas id="gridCanvas"></canvas>
     <div id="controls">
       <div>
-        p = <span id="pValue">0.70</span><br />
+        p = <span id="pValue">0.50</span><br />
+
         <input
           type="range"
           id="pSlider"
           min="0"
           max="1"
           step="0.01"
-          value="0.7"
+          value="0.5"
         />
       </div>
+
       <div>
-        Grid size:
-        <input type="number" id="gridSize" value="500" min="10" max="800" />
+        Grid rows:
+        <input type="number" id="gridSize" value="500" />
       </div>
       <button id="regen">재생성</button>
     </div>
@@ -66,17 +62,18 @@
     <script>
       const canvas = document.getElementById("gridCanvas");
       const ctx = canvas.getContext("2d");
+
       const pSlider = document.getElementById("pSlider");
       const pValue = document.getElementById("pValue");
       const gridInput = document.getElementById("gridSize");
       const regenBtn = document.getElementById("regen");
 
-      let N = parseInt(gridInput.value);
+      let ROW = parseInt(gridInput.value);
+      let COL = ROW * 2;
       let hEdges = [],
         vEdges = [],
         colors = [];
 
-      // HSL -> RGB 변환
       function hsl2rgb(h, s, l) {
         s /= 100;
         l /= 100;
@@ -109,7 +106,7 @@
         } else {
           r = c;
           g = 0;
-          b = c;
+          b = x;
         }
         return [
           Math.floor((r + m) * 255),
@@ -118,11 +115,11 @@
         ];
       }
 
-      // Union-Find
       function find(parent, x) {
         if (parent[x] !== x) parent[x] = find(parent, parent[x]);
         return parent[x];
       }
+
       function union(parent, rank, a, b) {
         a = find(parent, a);
         b = find(parent, b);
@@ -132,50 +129,49 @@
         if (rank[a] === rank[b]) rank[a]++;
       }
 
-      // 그리드 생성
       function generateGrid() {
-        N = parseInt(gridInput.value);
+        ROW = parseInt(gridInput.value);
+        COL = ROW * 2;
         hEdges = [];
         vEdges = [];
         colors = [];
-        for (let i = 0; i < N; i++) {
+        for (let i = 0; i < ROW; i++) {
           hEdges[i] = [];
           vEdges[i] = [];
-          for (let j = 0; j < N; j++) {
-            hEdges[i][j] = Math.random();
-            vEdges[i][j] = i < N - 1 ? Math.random() : null;
-            const hue = Math.random() * 360;
-            const sat = 50 + Math.random() * 30;
-            const light = 40 + Math.random() * 20;
-            colors.push([hue, sat, light]);
+          for (let j = 0; j < COL; j++) {
+            hEdges[i][j] = j < COL - 1 ? Math.random() : null;
+            vEdges[i][j] = i < ROW - 1 ? Math.random() : null;
+            colors.push([
+              Math.random() * 360,
+              50 + Math.random() * 30,
+              40 + Math.random() * 20,
+            ]);
           }
         }
       }
 
-      // 그리기
       function draw(p) {
-        const parent = Array.from({ length: N * N }, (_, i) => i);
-        let rank = Array(N * N).fill(0);
+        const parent = Array.from({ length: ROW * COL }, (_, i) => i);
+        let rank = Array(ROW * COL).fill(0);
         function id(i, j) {
-          return i * N + j;
+          return i * COL + j;
         }
-
-        for (let i = 0; i < N; i++) {
-          for (let j = 0; j < N; j++) {
-            if (j < N - 1 && hEdges[i][j] < p)
+        for (let i = 0; i < ROW; i++) {
+          for (let j = 0; j < COL; j++) {
+            if (j < COL - 1 && hEdges[i][j] < p)
               union(parent, rank, id(i, j), id(i, j + 1));
-            if (i < N - 1 && vEdges[i][j] < p)
+            if (i < ROW - 1 && vEdges[i][j] < p)
               union(parent, rank, id(i, j), id(i + 1, j));
           }
         }
 
-        const img = ctx.createImageData(N, N);
-        for (let i = 0; i < N; i++) {
-          for (let j = 0; j < N; j++) {
+        const img = ctx.createImageData(COL, ROW);
+        for (let i = 0; i < ROW; i++) {
+          for (let j = 0; j < COL; j++) {
             const root = find(parent, id(i, j));
             const [h, s, l] = colors[root];
             const [r, g, b] = hsl2rgb(h, s, l);
-            const idx = (i * N + j) * 4;
+            const idx = (i * COL + j) * 4;
             img.data[idx] = r;
             img.data[idx + 1] = g;
             img.data[idx + 2] = b;
@@ -183,12 +179,14 @@
           }
         }
 
-        canvas.width = N;
-        canvas.height = N;
+        canvas.width = COL;
+        canvas.height = ROW;
         ctx.putImageData(img, 0, 0);
+
+        canvas.style.width = "1000px"; // 화면 가로 1000px
+        canvas.style.height = "500px"; // 화면 세로 500px
       }
 
-      // 이벤트
       pSlider.oninput = function () {
         const p = parseFloat(pSlider.value);
         pValue.textContent = p.toFixed(2);
@@ -203,7 +201,6 @@
         draw(parseFloat(pSlider.value));
       };
 
-      // 초기화
       generateGrid();
       draw(parseFloat(pSlider.value));
     </script>
